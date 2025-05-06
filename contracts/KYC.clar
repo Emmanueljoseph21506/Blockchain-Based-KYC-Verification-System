@@ -134,3 +134,84 @@
         false
     )
 )
+
+
+
+(define-constant ERR-INVALID-UPGRADE (err u105))
+(define-constant ERR-SAME-LEVEL (err u106))
+
+(define-public (upgrade-kyc-level (subject principal) (new-level uint) (new-hash (buff 32)))
+    (let (
+        (current-status (unwrap! (map-get? kyc-status subject) ERR-NOT-VERIFIED))
+        (current-level (get level current-status))
+    )
+        (asserts! (is-eq (default-to false (map-get? authorized-verifiers tx-sender)) true) ERR-NOT-AUTHORIZED)
+        (asserts! (> new-level current-level) ERR-INVALID-UPGRADE)
+        (ok (map-set kyc-status subject
+            (merge current-status {
+                level: new-level,
+                hash: new-hash,
+                timestamp: stacks-block-height
+            })
+        ))
+    )
+)
+
+
+
+(define-constant ERR-INVALID-TIER (err u109))
+(define-constant ERR-REQUIREMENTS-NOT-MET (err u110))
+
+(define-map kyc-tiers
+    uint
+    {
+        name: (string-ascii 20),
+        min-age: uint,
+        required-documents: uint,
+        access-level: uint
+    }
+)
+
+(define-map user-tier-data
+    principal
+    {
+        tier: uint,
+        documents-submitted: uint,
+        age: uint
+    }
+)
+
+(define-public (create-kyc-tier (tier-id uint) (tier-name (string-ascii 20)) (min-age uint) (req-docs uint) (access uint))
+    (begin
+        (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
+        (ok (map-set kyc-tiers tier-id {
+            name: tier-name,
+            min-age: min-age,
+            required-documents: req-docs,
+            access-level: access
+        }))
+    )
+)
+
+(define-public (submit-tier-verification (subject principal) (tier-id uint) (age uint) (doc-count uint))
+    (let (
+        (tier-info (unwrap! (map-get? kyc-tiers tier-id) ERR-INVALID-TIER))
+    )
+        (asserts! (is-eq (default-to false (map-get? authorized-verifiers tx-sender)) true) ERR-NOT-AUTHORIZED)
+        (asserts! (>= age (get min-age tier-info)) ERR-REQUIREMENTS-NOT-MET)
+        (asserts! (>= doc-count (get required-documents tier-info)) ERR-REQUIREMENTS-NOT-MET)
+        (ok (map-set user-tier-data subject {
+            tier: tier-id,
+            documents-submitted: doc-count,
+            age: age
+        }))
+    )
+)
+
+(define-read-only (get-user-tier-status (subject principal))
+    (map-get? user-tier-data subject)
+)
+
+(define-read-only (get-tier-requirements (tier-id uint))
+    (map-get? kyc-tiers tier-id)
+)
