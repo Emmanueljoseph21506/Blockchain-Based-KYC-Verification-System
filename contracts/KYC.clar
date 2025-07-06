@@ -215,3 +215,4 @@
 (define-read-only (get-tier-requirements (tier-id uint))
     (map-get? kyc-tiers tier-id)
 )
+
